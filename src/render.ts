@@ -7,23 +7,7 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
-// Use the local node_modules binary instead of npx
 const HYPERFRAMES_BIN = '/app/node_modules/.bin/hyperframes';
-
-// Chrome flags needed for headless rendering inside Docker:
-// --no-sandbox            : required when running as root in Docker
-// --disable-dev-shm-usage : Chrome uses /tmp instead of /dev/shm (Docker default is too small)
-// --use-gl=swiftshader    : software WebGL renderer (no GPU needed)
-// --enable-webgl          : enable WebGL API
-// --ignore-gpu-blocklist  : don't block GPU features on unknown hardware
-const CHROME_FLAGS = [
-  '--no-sandbox',
-  '--disable-dev-shm-usage',
-  '--use-gl=swiftshader',
-  '--enable-webgl',
-  '--ignore-gpu-blocklist',
-  '--disable-gpu-sandbox',
-].join(' ');
 
 export interface RenderInput {
   htmlContent: string;
@@ -48,7 +32,6 @@ export async function renderHtmlToMp4(input: RenderInput): Promise<Buffer> {
   let processedHtml = htmlContent;
 
   // Remove CDN @hyperframes/core runtime — producer injects its own version.
-  // Having two runtimes prevents window.__hf from initialising correctly.
   processedHtml = processedHtml.replace(
     /<script[^>]*@hyperframes\/core[^>]*><\/script>/gi,
     '<!-- hyperframes/core runtime injected by producer -->'
@@ -68,20 +51,11 @@ export async function renderHtmlToMp4(input: RenderInput): Promise<Buffer> {
         '--fps', String(fps),
         '--quality', quality,
         '--non-interactive',
-        '--docker',
       ],
       {
         cwd: inputDir,
         timeout: 300_000,
-        env: {
-          ...process.env,
-          DISPLAY: '',
-          // Try multiple env var names — different Puppeteer/Chrome tools
-          // respect different ones. HyperFrames will pick up whichever it reads.
-          CHROMIUM_FLAGS: CHROME_FLAGS,
-          CHROME_FLAGS: CHROME_FLAGS,
-          PUPPETEER_CHROMIUM_ARGS: CHROME_FLAGS,
-        },
+        env: { ...process.env, DISPLAY: '' },
       }
     );
 

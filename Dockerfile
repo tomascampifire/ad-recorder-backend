@@ -1,7 +1,5 @@
-# Pin to linux/amd64 — matches Railway's servers
 FROM --platform=linux/amd64 node:22-bookworm-slim
 
-# Install system libraries that Chrome needs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     fonts-liberation \
@@ -28,16 +26,14 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 
-# Install chrome-headless-shell
 RUN npx puppeteer browsers install chrome-headless-shell
 
-# Wrap the Chrome binary to always inject required Docker flags.
-# This ensures --no-sandbox and --disable-dev-shm-usage are always passed
-# regardless of how HyperFrames internally launches the browser.
+# Wrap Chrome to inject --no-sandbox and --disable-dev-shm-usage.
+# These two flags are all that's needed for Chrome to run in Docker as root.
 RUN CHROME_BIN=$(find /root/.cache/puppeteer -name 'chrome-headless-shell' -type f | head -1) \
     && echo "Wrapping Chrome at: $CHROME_BIN" \
     && mv "$CHROME_BIN" "${CHROME_BIN}.real" \
-    && printf '#!/bin/sh\nexec "%s.real" --no-sandbox --disable-dev-shm-usage --use-gl=swiftshader --enable-webgl --ignore-gpu-blocklist "$@"\n' "$CHROME_BIN" > "$CHROME_BIN" \
+    && printf '#!/bin/sh\nexec "%s.real" --no-sandbox --disable-dev-shm-usage "$@"\n' "$CHROME_BIN" > "$CHROME_BIN" \
     && chmod +x "$CHROME_BIN"
 
 COPY tsconfig.json ./
