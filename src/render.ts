@@ -68,6 +68,7 @@ export async function renderHtmlToMp4(input: RenderInput): Promise<Buffer> {
         '--fps', String(fps),
         '--quality', quality,
         '--non-interactive',
+        '--docker',
       ],
       {
         cwd: inputDir,
