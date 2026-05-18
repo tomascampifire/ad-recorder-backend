@@ -7,8 +7,23 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
-// Use the local node_modules binary instead of npx (avoids re-downloading on every render)
+// Use the local node_modules binary instead of npx
 const HYPERFRAMES_BIN = '/app/node_modules/.bin/hyperframes';
+
+// Chrome flags needed for headless rendering inside Docker:
+// --no-sandbox            : required when running as root in Docker
+// --disable-dev-shm-usage : Chrome uses /tmp instead of /dev/shm (Docker default is too small)
+// --use-gl=swiftshader    : software WebGL renderer (no GPU needed)
+// --enable-webgl          : enable WebGL API
+// --ignore-gpu-blocklist  : don't block GPU features on unknown hardware
+const CHROME_FLAGS = [
+  '--no-sandbox',
+  '--disable-dev-shm-usage',
+  '--use-gl=swiftshader',
+  '--enable-webgl',
+  '--ignore-gpu-blocklist',
+  '--disable-gpu-sandbox',
+].join(' ');
 
 export interface RenderInput {
   htmlContent: string;
@@ -60,7 +75,11 @@ export async function renderHtmlToMp4(input: RenderInput): Promise<Buffer> {
         env: {
           ...process.env,
           DISPLAY: '',
-          CHROMIUM_FLAGS: '--use-gl=swiftshader --enable-webgl --ignore-gpu-blocklist --disable-gpu-sandbox',
+          // Try multiple env var names — different Puppeteer/Chrome tools
+          // respect different ones. HyperFrames will pick up whichever it reads.
+          CHROMIUM_FLAGS: CHROME_FLAGS,
+          CHROME_FLAGS: CHROME_FLAGS,
+          PUPPETEER_CHROMIUM_ARGS: CHROME_FLAGS,
         },
       }
     );

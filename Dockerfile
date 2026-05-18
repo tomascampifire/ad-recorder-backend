@@ -1,4 +1,4 @@
-# Pin to linux/amd64 — matches Railway's servers and ensures correct Chrome binary
+# Pin to linux/amd64 — matches Railway's servers
 FROM --platform=linux/amd64 node:22-bookworm-slim
 
 # Install system libraries that Chrome needs
@@ -23,16 +23,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
   && rm -rf /var/lib/apt/lists/*
 
+# Chrome flags for headless Docker rendering
+ENV CHROMIUM_FLAGS="--no-sandbox --disable-dev-shm-usage --use-gl=swiftshader --enable-webgl --ignore-gpu-blocklist --disable-gpu-sandbox"
+ENV CHROME_FLAGS="--no-sandbox --disable-dev-shm-usage --use-gl=swiftshader --enable-webgl --ignore-gpu-blocklist --disable-gpu-sandbox"
+ENV PUPPETEER_CHROMIUM_ARGS="--no-sandbox --disable-dev-shm-usage --use-gl=swiftshader --enable-webgl --ignore-gpu-blocklist --disable-gpu-sandbox"
+
 WORKDIR /app
 
-# Install dependencies
 COPY package*.json ./
 RUN npm install
 
-# Let Puppeteer download chrome-headless-shell (what HyperFrames actually needs)
+# Install chrome-headless-shell (what HyperFrames needs)
 RUN npx puppeteer browsers install chrome-headless-shell
 
-# Copy source (no build step — tsx runs TypeScript directly)
 COPY tsconfig.json ./
 COPY src ./src
 
