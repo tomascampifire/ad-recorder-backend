@@ -26,15 +26,23 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 
+# Install chrome-headless-shell
 RUN npx puppeteer browsers install chrome-headless-shell
 
-# Wrap Chrome to inject --no-sandbox and --disable-dev-shm-usage.
-# These two flags are all that's needed for Chrome to run in Docker as root.
+# Create a launcher script at a fixed path that injects required Docker flags.
+# Puppeteer will use this via PUPPETEER_EXECUTABLE_PATH instead of the raw binary.
 RUN CHROME_BIN=$(find /root/.cache/puppeteer -name 'chrome-headless-shell' -type f | head -1) \
-    && echo "Wrapping Chrome at: $CHROME_BIN" \
-    && mv "$CHROME_BIN" "${CHROME_BIN}.real" \
-    && printf '#!/bin/sh\nexec "%s.real" --no-sandbox --disable-dev-shm-usage "$@"\n' "$CHROME_BIN" > "$CHROME_BIN" \
-    && chmod +x "$CHROME_BIN"
+    && echo "Chrome binary found at: $CHROME_BIN" \
+    && cat > /usr/local/bin/chrome-launcher << SCRIPT
+#!/bin/sh
+exec "$CHROME_BIN" --no-sandbox --disable-dev-shm-usage "\$@"
+SCRIPT \
+    && chmod +x /usr/local/bin/chrome-launcher \
+    && echo "Launcher contents:" \
+    && cat /usr/local/bin/chrome-launcher
+
+# Point Puppeteer to our launcher so the flags are always included
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/local/bin/chrome-launcher
 
 COPY tsconfig.json ./
 COPY src ./src
