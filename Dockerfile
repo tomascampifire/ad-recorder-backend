@@ -23,18 +23,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
   && rm -rf /var/lib/apt/lists/*
 
-# Chrome flags for headless Docker rendering
-ENV CHROMIUM_FLAGS="--no-sandbox --disable-dev-shm-usage --use-gl=swiftshader --enable-webgl --ignore-gpu-blocklist --disable-gpu-sandbox"
-ENV CHROME_FLAGS="--no-sandbox --disable-dev-shm-usage --use-gl=swiftshader --enable-webgl --ignore-gpu-blocklist --disable-gpu-sandbox"
-ENV PUPPETEER_CHROMIUM_ARGS="--no-sandbox --disable-dev-shm-usage --use-gl=swiftshader --enable-webgl --ignore-gpu-blocklist --disable-gpu-sandbox"
-
 WORKDIR /app
 
 COPY package*.json ./
 RUN npm install
 
-# Install chrome-headless-shell (what HyperFrames needs)
+# Install chrome-headless-shell
 RUN npx puppeteer browsers install chrome-headless-shell
+
+# Wrap the Chrome binary to always inject required Docker flags.
+# This ensures --no-sandbox and --disable-dev-shm-usage are always passed
+# regardless of how HyperFrames internally launches the browser.
+RUN CHROME_BIN=$(find /root/.cache/puppeteer -name 'chrome-headless-shell' -type f | head -1) \
+    && echo "Wrapping Chrome at: $CHROME_BIN" \
+    && mv "$CHROME_BIN" "${CHROME_BIN}.real" \
+    && printf '#!/bin/sh\nexec "%s.real" --no-sandbox --disable-dev-shm-usage --use-gl=swiftshader --enable-webgl --ignore-gpu-blocklist "$@"\n' "$CHROME_BIN" > "$CHROME_BIN" \
+    && chmod +x "$CHROME_BIN"
 
 COPY tsconfig.json ./
 COPY src ./src
