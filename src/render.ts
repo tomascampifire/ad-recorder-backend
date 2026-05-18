@@ -7,6 +7,9 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
+// Use the local node_modules binary instead of npx (avoids re-downloading on every render)
+const HYPERFRAMES_BIN = '/app/node_modules/.bin/hyperframes';
+
 export interface RenderInput {
   htmlContent: string;
   width: number;
@@ -30,15 +33,10 @@ export async function renderHtmlToMp4(input: RenderInput): Promise<Buffer> {
   let processedHtml = htmlContent;
 
   // Remove CDN @hyperframes/core runtime — producer injects its own version.
+  // Having two runtimes prevents window.__hf from initialising correctly.
   processedHtml = processedHtml.replace(
     /<script[^>]*@hyperframes\/core[^>]*><\/script>/gi,
     '<!-- hyperframes/core runtime injected by producer -->'
-  );
-
-  // Replace CDN shader-transitions with a no-op polyfill.
-  processedHtml = processedHtml.replace(
-    /<script[^>]*@hyperframes\/shader-transitions[^>]*><\/script>/gi,
-    '<script>window.HyperShader = { init: function() {} };</script>'
   );
 
   processedHtml = ensureCompositionWrapper(processedHtml, { width, height, durationSeconds });
@@ -46,12 +44,11 @@ export async function renderHtmlToMp4(input: RenderInput): Promise<Buffer> {
   await writeFile(inputPath, processedHtml, 'utf-8');
 
   try {
-    // HyperFrames CLI takes the composition DIRECTORY (not the index.html file path)
     const { stdout, stderr } = await execFileAsync(
-      'npx',
+      HYPERFRAMES_BIN,
       [
-        'hyperframes', 'render',
-        inputDir,                    // <-- directory, not index.html
+        'render',
+        inputDir,
         '--output', outputPath,
         '--fps', String(fps),
         '--quality', quality,
@@ -60,7 +57,11 @@ export async function renderHtmlToMp4(input: RenderInput): Promise<Buffer> {
       {
         cwd: inputDir,
         timeout: 300_000,
-        env: { ...process.env, DISPLAY: '' },
+        env: {
+          ...process.env,
+          DISPLAY: '',
+          CHROMIUM_FLAGS: '--use-gl=swiftshader --enable-webgl --ignore-gpu-blocklist --disable-gpu-sandbox',
+        },
       }
     );
 
