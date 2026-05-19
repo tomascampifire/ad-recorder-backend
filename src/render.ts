@@ -2,12 +2,21 @@ import { mkdir, writeFile, readFile, rm } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 
-const execFileAsync = promisify(execFile);
+// Patch puppeteer-core BEFORE importing HyperFrames producer.
+// Both share the same module instance, so HyperFrames will see the patched version.
+// This injects --no-sandbox and --disable-dev-shm-usage into every browser launch,
+// which is required when running as root inside a Docker container (Railway).
+import puppeteer from 'puppeteer-core';
+const _originalLaunch = puppeteer.launch.bind(puppeteer);
+(puppeteer as any).launch = (options: any = {}) => {
+  const dockerFlags = ['--no-sandbox', '--disable-dev-shm-usage'];
+  const merged = [...(options.args || []), ...dockerFlags];
+  console.log('[patch] puppeteer.launch called — injecting Docker flags');
+  return _originalLaunch({ ...options, args: merged });
+};
 
-const HYPERFRAMES_BIN = '/app/node_modules/.bin/hyperframes';
+import { createRenderJob, executeRenderJob } from '@hyperframes/producer';
 
 export interface RenderInput {
   htmlContent: string;
@@ -42,25 +51,20 @@ export async function renderHtmlToMp4(input: RenderInput): Promise<Buffer> {
   await writeFile(inputPath, processedHtml, 'utf-8');
 
   try {
-    const { stdout, stderr } = await execFileAsync(
-      HYPERFRAMES_BIN,
-      [
-        'render',
-        inputDir,
-        '--output', outputPath,
-        '--fps', String(fps),
-        '--quality', quality,
-        '--non-interactive',
-      ],
-      {
-        cwd: inputDir,
-        timeout: 300_000,
-        env: { ...process.env, DISPLAY: '' },
-      }
-    );
+    // Use the composition directory as input (same as CLI: hyperframes render inputDir)
+    // @ts-ignore — type definitions are stricter than the actual runtime API
+    const job = createRenderJob({
+      input: inputDir,
+      output: outputPath,
+      fps: fps as any,
+      quality,
+      format: 'mp4',
+      workers: 1,
+      useGpu: false,
+    });
 
-    if (stdout) console.log('[hyperframes]', stdout.trim());
-    if (stderr) console.log('[hyperframes stderr]', stderr.trim());
+    // @ts-ignore
+    await executeRenderJob(job);
 
     const mp4 = await readFile(outputPath);
     return mp4;
