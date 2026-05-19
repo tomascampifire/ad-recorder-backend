@@ -4,16 +4,17 @@ import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
 
 // Patch puppeteer-core BEFORE importing HyperFrames producer.
-// Both share the same module instance, so HyperFrames will see the patched version.
-// This injects --no-sandbox and --disable-dev-shm-usage into every browser launch,
-// which is required when running as root inside a Docker container (Railway).
+// Both share the same module instance so HyperFrames will see the patched version.
+// Injects --no-sandbox and --disable-dev-shm-usage required for Docker/Railway.
 import puppeteer from 'puppeteer-core';
 const _originalLaunch = puppeteer.launch.bind(puppeteer);
 (puppeteer as any).launch = (options: any = {}) => {
   const dockerFlags = ['--no-sandbox', '--disable-dev-shm-usage'];
-  const merged = [...(options.args || []), ...dockerFlags];
-  console.log('[patch] puppeteer.launch called — injecting Docker flags');
-  return _originalLaunch({ ...options, args: merged });
+  console.log('[patch] puppeteer.launch — injecting Docker flags');
+  return _originalLaunch({
+    ...options,
+    args: [...(options.args || []), ...dockerFlags],
+  });
 };
 
 import { createRenderJob, executeRenderJob } from '@hyperframes/producer';
@@ -51,20 +52,19 @@ export async function renderHtmlToMp4(input: RenderInput): Promise<Buffer> {
   await writeFile(inputPath, processedHtml, 'utf-8');
 
   try {
-    // Pass input/output in createRenderJob (so fps is stored in the job)
-    // AND pass inputDir/outputPath to executeRenderJob (required at runtime)
+    // Pass fps as a STRING — the CLI passes it as a string arg and that works.
+    // Passing as a number causes the HyperFrames type system to silently reject it
+    // and leave fps as undefined, which causes FFmpeg's "undefined/undefined" error.
     // @ts-ignore
     const job = createRenderJob({
-      input: inputDir,
-      output: outputPath,
-      fps: fps as any,
+      fps: String(fps),
       quality,
       format: 'mp4',
       workers: 1,
       useGpu: false,
     });
 
-    // @ts-ignore
+    // @ts-ignore — types require 3+ args; paths are required at runtime
     await executeRenderJob(job, inputDir, outputPath);
 
     const mp4 = await readFile(outputPath);
