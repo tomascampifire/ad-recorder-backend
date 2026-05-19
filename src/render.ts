@@ -51,8 +51,9 @@ export async function renderHtmlToMp4(input: RenderInput): Promise<Buffer> {
   await writeFile(inputPath, processedHtml, 'utf-8');
 
   try {
-    // Use the composition directory as input (same as CLI: hyperframes render inputDir)
-    // @ts-ignore — type definitions are stricter than the actual runtime API
+    // Pass input/output in createRenderJob (so fps is stored in the job)
+    // AND pass inputDir/outputPath to executeRenderJob (required at runtime)
+    // @ts-ignore
     const job = createRenderJob({
       input: inputDir,
       output: outputPath,
@@ -64,7 +65,7 @@ export async function renderHtmlToMp4(input: RenderInput): Promise<Buffer> {
     });
 
     // @ts-ignore
-    await executeRenderJob(job);
+    await executeRenderJob(job, inputDir, outputPath);
 
     const mp4 = await readFile(outputPath);
     return mp4;
