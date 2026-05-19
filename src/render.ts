@@ -1,4 +1,7 @@
-import { createRenderJob, executeRenderJob } from '@hyperframes/producer';
+/* eslint-disable @typescript-eslint/no-require-imports */
+// Use require() to bypass the Fps/GPUTextureUsage type errors in @hyperframes typedefs
+const { createRenderJob, executeRenderJob } = require('@hyperframes/producer');
+
 import { mkdir, writeFile, readFile, rm } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -43,15 +46,19 @@ export async function renderHtmlToMp4(input: RenderInput): Promise<Buffer> {
   await writeFile(inputPath, ensuredHtml, 'utf-8');
 
   try {
-    const job = createRenderJob({
-      input: inputPath,
-      output: outputPath,
-      fps,
+    // createRenderJob signature: (input, output, fps, quality?, options?)
+    // fps must be a string literal ("24" | "30" | "60") per the HyperFrames Fps type
+    const job = createRenderJob(
+      inputPath,
+      outputPath,
+      String(fps),
       quality,
-      format: 'mp4',
-      workers: 1,      // Sequential processing — one render at a time per container
-      useGpu: false,   // Railway containers don't have GPU
-    });
+      {
+        format: 'mp4',
+        workers: 1,    // Sequential — one render at a time per container
+        useGpu: false, // Railway containers have no GPU
+      }
+    );
 
     await executeRenderJob(job);
 
