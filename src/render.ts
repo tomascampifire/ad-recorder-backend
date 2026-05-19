@@ -1,10 +1,10 @@
-import { mkdir, writeFile, readFile, rm } from 'fs/promises';
+import { mkdir, writeFile, rm } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
 
-// Patch puppeteer-core BEFORE importing HyperFrames producer.
-// Both share the same module instance so HyperFrames will see the patched version.
+// Patch puppeteer-core BEFORE importing anything from HyperFrames.
+// Both packages share the same module instance so the patch is seen by HyperFrames.
 // Injects --no-sandbox and --disable-dev-shm-usage required for Docker/Railway.
 import puppeteer from 'puppeteer-core';
 const _originalLaunch = puppeteer.launch.bind(puppeteer);
@@ -52,21 +52,26 @@ export async function renderHtmlToMp4(input: RenderInput): Promise<Buffer> {
   await writeFile(inputPath, processedHtml, 'utf-8');
 
   try {
-    // Pass fps as a STRING — the CLI passes it as a string arg and that works.
-    // Passing as a number causes the HyperFrames type system to silently reject it
-    // and leave fps as undefined, which causes FFmpeg's "undefined/undefined" error.
-    // @ts-ignore
+    // Use the documented basic API: input + output + fps + quality all in createRenderJob,
+    // then executeRenderJob with just the job object (1 argument).
+    // This is the standard MP4 path shown in the official docs.
     const job = createRenderJob({
-      fps: String(fps),
+      // @ts-ignore — input/output are valid at runtime even if not in TS type
+      input: inputPath,
+      output: outputPath,
+      fps,
       quality,
-      format: 'mp4',
+      format: 'mp4' as any,
       workers: 1,
       useGpu: false,
     });
 
-    // @ts-ignore — types require 3+ args; paths are required at runtime
-    await executeRenderJob(job, inputDir, outputPath);
+    console.log('[render] job created, input:', inputPath, 'output:', outputPath);
 
+    // @ts-ignore — TS types say 3+ args but docs show 1 arg for standard MP4
+    await executeRenderJob(job);
+
+    const { readFile } = await import('fs/promises');
     const mp4 = await readFile(outputPath);
     return mp4;
   } finally {
