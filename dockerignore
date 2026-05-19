@@ -3,7 +3,5 @@ dist
 .git
 .env
 .env.local
-.DS_Store
-*.log
-*.mp4
 README.md
+*.log

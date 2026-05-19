@@ -1,23 +1,8 @@
-import { mkdir, writeFile, rm } from 'fs/promises';
+import { createRenderJob, executeRenderJob } from '@hyperframes/producer';
+import { mkdir, writeFile, readFile, rm } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
-
-// Patch puppeteer-core BEFORE importing anything from HyperFrames.
-// Both packages share the same module instance so the patch is seen by HyperFrames.
-// Injects --no-sandbox and --disable-dev-shm-usage required for Docker/Railway.
-import puppeteer from 'puppeteer-core';
-const _originalLaunch = puppeteer.launch.bind(puppeteer);
-(puppeteer as any).launch = (options: any = {}) => {
-  const dockerFlags = ['--no-sandbox', '--disable-dev-shm-usage'];
-  console.log('[patch] puppeteer.launch — injecting Docker flags');
-  return _originalLaunch({
-    ...options,
-    args: [...(options.args || []), ...dockerFlags],
-  });
-};
-
-import { createRenderJob, executeRenderJob } from '@hyperframes/producer';
 
 export interface RenderInput {
   htmlContent: string;
@@ -28,6 +13,10 @@ export interface RenderInput {
   quality: 'draft' | 'standard' | 'high';
 }
 
+/**
+ * Renders HTML content to MP4 using HyperFrames Producer.
+ * Returns the MP4 file as a Buffer.
+ */
 export async function renderHtmlToMp4(input: RenderInput): Promise<Buffer> {
   const { htmlContent, width, height, durationSeconds, fps, quality } = input;
 
@@ -39,55 +28,63 @@ export async function renderHtmlToMp4(input: RenderInput): Promise<Buffer> {
 
   await mkdir(inputDir, { recursive: true });
 
-  let processedHtml = htmlContent;
+  // HyperFrames expects the composition root element to have specific data attributes:
+  //   data-composition-id, data-width, data-height
+  // and timed elements to have data-start, data-duration, data-track-index, class="clip"
+  //
+  // Claude Design ad files come as plain HTML pages without these attributes.
+  // ensureCompositionWrapper injects a compatible wrapper so Producer can render them.
+  const ensuredHtml = ensureCompositionWrapper(htmlContent, {
+    width,
+    height,
+    durationSeconds,
+  });
 
-  // Remove CDN @hyperframes/core runtime — producer injects its own version.
-  processedHtml = processedHtml.replace(
-    /<script[^>]*@hyperframes\/core[^>]*><\/script>/gi,
-    '<!-- hyperframes/core runtime injected by producer -->'
-  );
-
-  processedHtml = ensureCompositionWrapper(processedHtml, { width, height, durationSeconds });
-
-  await writeFile(inputPath, processedHtml, 'utf-8');
+  await writeFile(inputPath, ensuredHtml, 'utf-8');
 
   try {
-    // Use the documented basic API: input + output + fps + quality all in createRenderJob,
-    // then executeRenderJob with just the job object (1 argument).
-    // This is the standard MP4 path shown in the official docs.
     const job = createRenderJob({
-      // @ts-ignore — input/output are valid at runtime even if not in TS type
       input: inputPath,
       output: outputPath,
       fps,
       quality,
-      format: 'mp4' as any,
-      workers: 1,
-      useGpu: false,
+      format: 'mp4',
+      workers: 1,      // Sequential processing — one render at a time per container
+      useGpu: false,   // Railway containers don't have GPU
     });
 
-    console.log('[render] job created, input:', inputPath, 'output:', outputPath);
-
-    // @ts-ignore — TS types say 3+ args but docs show 1 arg for standard MP4
     await executeRenderJob(job);
 
-    const { readFile } = await import('fs/promises');
     const mp4 = await readFile(outputPath);
     return mp4;
   } finally {
+    // Always clean up the temp directory
     await rm(workDir, { recursive: true, force: true }).catch(() => {});
   }
 }
 
+/**
+ * Ensures the HTML has a HyperFrames-compatible composition wrapper.
+ *
+ * If the HTML already contains data-composition-id (i.e. it was authored
+ * as a HyperFrames composition), this is a no-op.
+ *
+ * Otherwise, the existing body content is wrapped in:
+ *   1. A composition root div (data-composition-id, data-width, data-height)
+ *   2. A single clip div (class="clip", data-start, data-duration, data-track-index)
+ *
+ * This makes any self-contained HTML ad (e.g. Claude Design exports) renderable
+ * as a single clip running for the full specified duration.
+ */
 function ensureCompositionWrapper(
   html: string,
   opts: { width: number; height: number; durationSeconds: number }
 ): string {
   if (html.includes('data-composition-id')) {
-    return html;
+    return html; // Already a valid HyperFrames composition
   }
 
-  const wrapper = `<div
+  const compositionRoot = `<div
     id="hyperframes-root"
     data-composition-id="ad"
     data-start="0"
@@ -96,7 +93,7 @@ function ensureCompositionWrapper(
     style="width:${opts.width}px;height:${opts.height}px;position:relative;overflow:hidden;"
   >`;
 
-  const clipOpener = `<div
+  const clipWrapper = `<div
     class="clip"
     data-start="0"
     data-duration="${opts.durationSeconds}"
@@ -104,9 +101,10 @@ function ensureCompositionWrapper(
     style="width:100%;height:100%;"
   >`;
 
+  // Insert wrappers immediately after <body ...> and close them before </body>
   let result = html.replace(
     /<body([^>]*)>/i,
-    `<body$1>${wrapper}${clipOpener}`
+    `<body$1>${compositionRoot}${clipWrapper}`
   );
   result = result.replace(/<\/body>/i, `</div></div></body>`);
 
