@@ -16,6 +16,12 @@ export interface RenderInput {
 /**
  * Renders HTML content to MP4 using HyperFrames Producer.
  * Returns the MP4 file as a Buffer.
+ *
+ * API (from renderOrchestrator.d.ts):
+ *   createRenderJob(config: RenderConfig): RenderJob
+ *   executeRenderJob(job, projectDir, outputPath, onProgress?, abortSignal?): Promise<void>
+ *
+ * Fps type (from @hyperframes/core): { num: number, den: number }
  */
 export async function renderHtmlToMp4(input: RenderInput): Promise<Buffer> {
   const { htmlContent, width, height, durationSeconds, fps, quality } = input;
@@ -28,28 +34,21 @@ export async function renderHtmlToMp4(input: RenderInput): Promise<Buffer> {
 
   await mkdir(inputDir, { recursive: true });
 
-  const ensuredHtml = ensureCompositionWrapper(htmlContent, {
-    width,
-    height,
-    durationSeconds,
-  });
-
+  const ensuredHtml = ensureCompositionWrapper(htmlContent, { width, height, durationSeconds });
   await writeFile(inputPath, ensuredHtml, 'utf-8');
 
   try {
-    const job = createRenderJob(
-      inputPath,
-      outputPath,
-      String(fps),
+    const job = createRenderJob({
+      fps: { num: fps, den: 1 },   // Fps is a rational: { num, den }
       quality,
-      {
-        format: 'mp4',
-        workers: 1,
-        useGpu: false,
-      }
-    );
+      format: 'mp4',
+      entryFile: 'index.html',
+      workers: 1,
+      useGpu: false,
+    });
 
-    await executeRenderJob(job);
+    // executeRenderJob(job, projectDir, outputPath, onProgress?, abortSignal?)
+    await executeRenderJob(job, inputDir, outputPath);
 
     const mp4 = await readFile(outputPath);
     return mp4;
@@ -58,6 +57,12 @@ export async function renderHtmlToMp4(input: RenderInput): Promise<Buffer> {
   }
 }
 
+/**
+ * Ensures the HTML has a HyperFrames-compatible composition wrapper.
+ * Claude Design exports are plain HTML — this wraps them into a single clip
+ * so HyperFrames Producer can time and render them correctly.
+ * If the file already has data-composition-id, this is a no-op.
+ */
 function ensureCompositionWrapper(
   html: string,
   opts: { width: number; height: number; durationSeconds: number }
@@ -83,11 +88,7 @@ function ensureCompositionWrapper(
     style="width:100%;height:100%;"
   >`;
 
-  let result = html.replace(
-    /<body([^>]*)>/i,
-    `<body$1>${compositionRoot}${clipWrapper}`
-  );
+  let result = html.replace(/<body([^>]*)>/i, `<body$1>${compositionRoot}${clipWrapper}`);
   result = result.replace(/<\/body>/i, `</div></div></body>`);
-
   return result;
 }

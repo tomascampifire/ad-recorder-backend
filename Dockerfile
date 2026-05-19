@@ -1,6 +1,5 @@
 FROM node:22-bookworm-slim
 
-# Install Chromium, ffmpeg, fonts, and all headless rendering dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     ffmpeg \
@@ -23,23 +22,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
   && rm -rf /var/lib/apt/lists/*
 
-# Tell Puppeteer (used internally by HyperFrames) to skip its own Chromium download
-# and use the system Chromium we just installed above
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV CHROME_PATH=/usr/bin/chromium
 
 WORKDIR /app
 
-# Install dependencies first (separate layer = faster rebuilds on code changes)
 COPY package*.json ./
 RUN npm install --omit=optional
 
-# Copy source and compile TypeScript
-COPY tsconfig.json ./
+# No tsc build step — tsx transpiles at runtime, avoiding node_modules type errors
 COPY src ./src
-RUN npx tsc
 
 EXPOSE 3000
 
-CMD ["node", "dist/server.js"]
+CMD ["node", "--import", "tsx/esm", "src/server.ts"]
