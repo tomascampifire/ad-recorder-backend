@@ -2,10 +2,10 @@
   "name": "ad-recorder-backend",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/server.js",
-    "dev": "tsx watch src/server.ts"
+    "dev": "tsx src/server.ts",
+    "start": "tsx src/server.ts"
   },
   "dependencies": {
     "@hyperframes/producer": "latest",
