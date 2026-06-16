@@ -27,12 +27,32 @@ export async function renderHtmlToMp4(input: RenderInput): Promise<Buffer> {
   await writeFile(join(inputDir, 'index.html'), ensuredHtml, 'utf-8');
 
   try {
+    // Resolver la ruta del chrome-headless-shell instalado por puppeteer en el build.
+    // El glob en ENV no expande en Node, así que lo resolvemos en runtime.
+    let executablePath: string | undefined;
+    try {
+      const { execSync } = await import('child_process');
+      const found = execSync(
+        'find /app/.cache/puppeteer -name "chrome-headless-shell" -type f 2>/dev/null | head -1'
+      ).toString().trim();
+      if (found) executablePath = found;
+    } catch { /* fallback: el producer detecta el binario solo */ }
+
     const job = createRenderJob({
       fps,
       quality,
       format: 'mp4',
       workers: 1,
       useGpu: false,
+      forceScreenshot: true,                // evita beginFrame (removido en Chrome 147+)
+      executablePath,                        // chrome-headless-shell, no el Chrome del sistema
+      browserArgs: [
+        '--disable-dev-shm-usage',          // crítico: evita crashes por /dev/shm de 64MB en Docker
+        '--no-sandbox',                      // requerido en contenedores sin privilegios
+        '--disable-setuid-sandbox',
+        '--disable-gpu',                     // ya estamos en software, esto lo hace explícito
+        '--disable-accelerated-2d-canvas',
+      ],
     });
 
     await executeRenderJob(job, inputDir, outputPath);

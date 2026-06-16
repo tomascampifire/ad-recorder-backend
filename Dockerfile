@@ -3,7 +3,6 @@
 FROM oven/bun:1-debian
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium \
     ffmpeg \
     fonts-liberation \
     fonts-noto-color-emoji \
@@ -26,12 +25,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-ENV PUPPETEER_SKIP_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-ENV CHROME_PATH=/usr/bin/chromium
+# Usar chrome-headless-shell (binario ligero y estable para renders server-side).
+# El chromium del sistema es el Chrome completo y crashea en contenedores con Railway.
+ENV PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
 
 COPY package*.json ./
-RUN bun install
+RUN bun install \
+  && npx puppeteer browsers install chrome-headless-shell \
+  && find /app/.cache/puppeteer -name 'chrome-headless-shell' -type f | head -1 > /app/.chrome-path \
+  && echo "Chrome headless shell instalado en: $(cat /app/.chrome-path)"
 
 COPY tsconfig.json ./
 COPY src ./src
