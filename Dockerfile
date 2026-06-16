@@ -31,7 +31,7 @@ ENV PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
 
 COPY package*.json ./
 RUN bun install \
-  && npx puppeteer browsers install chrome-headless-shell \
+  && bunx puppeteer browsers install chrome-headless-shell \
   && find /app/.cache/puppeteer -name 'chrome-headless-shell' -type f | head -1 > /app/.chrome-path \
   && echo "Chrome headless shell instalado en: $(cat /app/.chrome-path)"
 
