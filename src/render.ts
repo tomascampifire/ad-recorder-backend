@@ -33,6 +33,11 @@ export async function renderHtmlToMp4(input: RenderInput): Promise<Buffer> {
       format: 'mp4',
       workers: 1,
       useGpu: false,
+      browserArgs: [
+        '--disable-dev-shm-usage',   // usa /tmp en vez de /dev/shm (64MB en Docker → crash)
+        '--no-sandbox',              // requerido en contenedores sin privilegios
+        '--disable-setuid-sandbox',
+      ],
     });
 
     await executeRenderJob(job, inputDir, outputPath);
