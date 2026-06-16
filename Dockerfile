@@ -1,5 +1,8 @@
-# Use Bun — HyperFrames Producer is bundled for Bun and uses __dirname
-# which doesn't exist in Node ESM scope
+# Stage 1: obtener el chrome-headless-shell desde la imagen oficial
+# (evita descargas en build time que fallan por URLs cambiantes)
+FROM chromedp/headless-shell:stable AS chrome
+
+# Stage 2: imagen principal con Bun
 FROM oven/bun:1-debian
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -21,18 +24,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpango-1.0-0 \
     libcairo2 \
     libasound2 \
-    libcups2 \
   && rm -rf /var/lib/apt/lists/*
+
+# Copiar el binario desde el stage de chrome
+COPY --from=chrome /headless-shell /usr/local/bin/chrome-headless-shell
+RUN chmod +x /usr/local/bin/chrome-headless-shell
 
 WORKDIR /app
 
-ENV PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
+# Apuntar puppeteer al binario copiado
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/local/bin/chrome-headless-shell
+ENV CHROME_PATH=/usr/local/bin/chrome-headless-shell
 
 COPY package*.json ./
-RUN bun install \
-  && node -e "const {install}=require('@puppeteer/browsers');install({browser:'chrome-headless-shell',buildId:'latest',cacheDir:'/app/.cache/puppeteer'}).then(r=>console.log('installed:',r.executablePath)).catch(e=>{console.error(e);process.exit(1)})" \
-  && find /app/.cache/puppeteer -name 'chrome-headless-shell' -type f | head -1 > /app/.chrome-path \
-  && echo "Binario: $(cat /app/.chrome-path)"
+RUN bun install
 
 COPY tsconfig.json ./
 COPY src ./src
