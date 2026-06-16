@@ -1,11 +1,9 @@
-# Stage 1: obtener el chrome-headless-shell desde la imagen oficial
-# (evita descargas en build time que fallan por URLs cambiantes)
-FROM chromedp/headless-shell:stable AS chrome
-
-# Stage 2: imagen principal con Bun
+# Use Bun — HyperFrames Producer is bundled for Bun and uses __dirname
+# which doesn't exist in Node ESM scope
 FROM oven/bun:1-debian
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
     ffmpeg \
     fonts-liberation \
     fonts-noto-color-emoji \
@@ -26,17 +24,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
   && rm -rf /var/lib/apt/lists/*
 
-# Copiar el binario desde el stage de chrome
-COPY --from=chrome /headless-shell /usr/local/bin/chrome-headless-shell
-RUN chmod 755 /usr/local/bin/chrome-headless-shell \
-  && ls -la /usr/local/bin/chrome-headless-shell
-
 WORKDIR /app
 
-# Apuntar puppeteer al binario copiado
 ENV PUPPETEER_SKIP_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/local/bin/chrome-headless-shell
-ENV CHROME_PATH=/usr/local/bin/chrome-headless-shell
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV CHROME_PATH=/usr/bin/chromium
 
 COPY package*.json ./
 RUN bun install

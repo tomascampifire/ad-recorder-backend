@@ -33,15 +33,6 @@ export async function renderHtmlToMp4(input: RenderInput): Promise<Buffer> {
       format: 'mp4',
       workers: 1,
       useGpu: false,
-      forceScreenshot: true,              // evita beginFrame (removido en Chrome 147+)
-      executablePath: '/usr/local/bin/chrome-headless-shell',
-      browserArgs: [
-        '--disable-dev-shm-usage',        // evita crashes por /dev/shm de 64MB en Docker
-        '--no-sandbox',                   // requerido en contenedores sin privilegios
-        '--disable-setuid-sandbox',
-        '--disable-gpu',
-        '--disable-accelerated-2d-canvas',
-      ],
     });
 
     await executeRenderJob(job, inputDir, outputPath);
