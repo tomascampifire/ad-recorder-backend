@@ -21,19 +21,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpango-1.0-0 \
     libcairo2 \
     libasound2 \
+    libcups2 \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Usar chrome-headless-shell (binario ligero y estable para renders server-side).
-# El chromium del sistema es el Chrome completo y crashea en contenedores con Railway.
 ENV PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
 
 COPY package*.json ./
 RUN bun install \
-  && bunx puppeteer browsers install chrome-headless-shell \
+  && node -e "const {install}=require('@puppeteer/browsers');install({browser:'chrome-headless-shell',buildId:'latest',cacheDir:'/app/.cache/puppeteer'}).then(r=>console.log('installed:',r.executablePath)).catch(e=>{console.error(e);process.exit(1)})" \
   && find /app/.cache/puppeteer -name 'chrome-headless-shell' -type f | head -1 > /app/.chrome-path \
-  && echo "Chrome headless shell instalado en: $(cat /app/.chrome-path)"
+  && echo "Binario: $(cat /app/.chrome-path)"
 
 COPY tsconfig.json ./
 COPY src ./src
