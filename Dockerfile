@@ -28,7 +28,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copiar el binario desde el stage de chrome
 COPY --from=chrome /headless-shell /usr/local/bin/chrome-headless-shell
-RUN chmod +x /usr/local/bin/chrome-headless-shell
+RUN chmod 755 /usr/local/bin/chrome-headless-shell \
+  && ls -la /usr/local/bin/chrome-headless-shell
 
 WORKDIR /app
 
